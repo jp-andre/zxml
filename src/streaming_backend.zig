@@ -106,6 +106,7 @@ pub const StreamingBackend = struct {
     // Self-closing element tracking
     pending_end_element: ?[]const u8 = null,
     pending_attr_start: usize = 0,
+    pending_buffer_mark: usize = 0,
 
     /// Initialize streaming backend with a Reader (caller owns the buffer passed to reader)
     pub fn init(allocator: std.mem.Allocator, reader: *std.Io.Reader) StreamingBackend {
@@ -138,6 +139,8 @@ pub const StreamingBackend = struct {
         if (self.pending_end_element) |name| {
             self.pending_end_element = null;
             self.total_attr_count = self.pending_attr_start;
+            // Reset string storage to free the element name memory
+            self.strings.resetToMark(self.pending_buffer_mark);
             return Event{ .end_element = .{ .name = name } };
         }
 
@@ -288,6 +291,7 @@ pub const StreamingBackend = struct {
         if (self_closing) {
             self.pending_end_element = name;
             self.pending_attr_start = attr_start;
+            self.pending_buffer_mark = buffer_mark;
         }
 
         return start_event;

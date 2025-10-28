@@ -6,3 +6,4 @@ bench/*.xml
 media_library.xml
 benchmark_*
 .vscode
+test.xml
