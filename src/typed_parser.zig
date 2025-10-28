@@ -781,17 +781,20 @@ pub fn TypedParser(comptime T: type) type {
 
     return struct {
         allocator: std.mem.Allocator,
-        pull_parser: PullParser,
+        pull_parser_ptr: *PullParser,
         result: T,
 
         /// Initialize with a Reader for streaming parsing (large files)
         pub fn init(allocator: std.mem.Allocator, reader: *std.Io.Reader) !@This() {
-            var pull_parser = PullParser.initWithReader(allocator, reader);
-            errdefer pull_parser.deinit();
+            const parser_ptr = try allocator.create(PullParser);
+            errdefer allocator.destroy(parser_ptr);
+
+            parser_ptr.* = PullParser.initWithReader(allocator, reader);
+            errdefer parser_ptr.deinit();
 
             // Skip to first element (root)
             var root_elem: ?Event = null;
-            while (try pull_parser.next()) |event| {
+            while (try parser_ptr.next()) |event| {
                 if (event == .start_element) {
                     root_elem = event;
                     break;
@@ -806,13 +809,13 @@ pub fn TypedParser(comptime T: type) type {
 
             // Parse root element based on whether it has iterators
             const result = if (comptime hasIterator(T))
-                try parseLazyStruct(T, &pull_parser, elem.attributes, elem.name)
+                try parseLazyStruct(T, parser_ptr, elem.attributes, elem.name)
             else
-                try parseEagerStruct(T, &pull_parser, elem.attributes, elem.name);
+                try parseEagerStruct(T, parser_ptr, elem.attributes, elem.name);
 
             return .{
                 .allocator = allocator,
-                .pull_parser = pull_parser,
+                .pull_parser_ptr = parser_ptr,
                 .result = result,
             };
         }
@@ -820,12 +823,15 @@ pub fn TypedParser(comptime T: type) type {
         /// Initialize with XML in memory for faster parsing (small documents)
         /// Performance: ~800-850 MB/s
         pub fn initInMemory(allocator: std.mem.Allocator, xml: []const u8) !@This() {
-            var pull_parser = PullParser.initInMemory(allocator, xml);
-            errdefer pull_parser.deinit();
+            const parser_ptr = try allocator.create(PullParser);
+            errdefer allocator.destroy(parser_ptr);
+
+            parser_ptr.* = PullParser.initInMemory(allocator, xml);
+            errdefer parser_ptr.deinit();
 
             // Skip to first element (root)
             var root_elem: ?Event = null;
-            while (try pull_parser.next()) |event| {
+            while (try parser_ptr.next()) |event| {
                 if (event == .start_element) {
                     root_elem = event;
                     break;
@@ -839,14 +845,15 @@ pub fn TypedParser(comptime T: type) type {
             const elem = root_elem.?.start_element;
 
             // Parse root element based on whether it has iterators
+            // Pass stable pointer to heap-allocated parser
             const result = if (comptime hasIterator(T))
-                try parseLazyStruct(T, &pull_parser, elem.attributes, elem.name)
+                try parseLazyStruct(T, parser_ptr, elem.attributes, elem.name)
             else
-                try parseEagerStruct(T, &pull_parser, elem.attributes, elem.name);
+                try parseEagerStruct(T, parser_ptr, elem.attributes, elem.name);
 
             return .{
                 .allocator = allocator,
-                .pull_parser = pull_parser,
+                .pull_parser_ptr = parser_ptr,
                 .result = result,
             };
         }
@@ -855,12 +862,15 @@ pub fn TypedParser(comptime T: type) type {
         /// Best for large files (100+ MB) - OS handles paging automatically
         /// Performance: ~550-800 MB/s depending on file size
         pub fn initWithMmap(allocator: std.mem.Allocator, file_path: []const u8) !@This() {
-            var pull_parser = try PullParser.initWithMmap(allocator, file_path);
-            errdefer pull_parser.deinit();
+            const parser_ptr = try allocator.create(PullParser);
+            errdefer allocator.destroy(parser_ptr);
+
+            parser_ptr.* = try PullParser.initWithMmap(allocator, file_path);
+            errdefer parser_ptr.deinit();
 
             // Skip to first element (root)
             var root_elem: ?Event = null;
-            while (try pull_parser.next()) |event| {
+            while (try parser_ptr.next()) |event| {
                 if (event == .start_element) {
                     root_elem = event;
                     break;
@@ -875,19 +885,20 @@ pub fn TypedParser(comptime T: type) type {
 
             // Parse root element based on whether it has iterators
             const result = if (comptime hasIterator(T))
-                try parseLazyStruct(T, &pull_parser, elem.attributes, elem.name)
+                try parseLazyStruct(T, parser_ptr, elem.attributes, elem.name)
             else
-                try parseEagerStruct(T, &pull_parser, elem.attributes, elem.name);
+                try parseEagerStruct(T, parser_ptr, elem.attributes, elem.name);
 
             return .{
                 .allocator = allocator,
-                .pull_parser = pull_parser,
+                .pull_parser_ptr = parser_ptr,
                 .result = result,
             };
         }
 
         pub fn deinit(self: *@This()) void {
-            self.pull_parser.deinit();
+            self.pull_parser_ptr.deinit();
+            self.allocator.destroy(self.pull_parser_ptr);
         }
     };
 }

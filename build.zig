@@ -298,6 +298,23 @@ pub fn build(b: *std.Build) void {
     }
     run_typed_parser_example_step.dependOn(&run_typed_parser_example.step);
 
+    // Create tiger SVG parsing tests
+    const tiger_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests/tiger.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zxml", .module = mod },
+            },
+        }),
+    });
+
+    const run_tiger_tests = b.addRunArtifact(tiger_tests);
+
+    // Add tiger tests to the test step
+    test_step.dependOn(&run_tiger_tests.step);
+
     // Create typed_parser benchmark executable
     const bench_typed_parser_streaming = b.addExecutable(.{
         .name = "bench_typed_parser_streaming",
