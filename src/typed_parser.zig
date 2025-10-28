@@ -597,7 +597,6 @@ pub fn Iterator(comptime tag_name: []const u8, comptime T: type) type {
         parser: *PullParser,
         parent_tag: []const u8,
         done: bool = false,
-        last_element: ?[]const u8 = null,
 
         // Marker for type detection
         pub const __is_zxml_iterator = true;
@@ -609,20 +608,10 @@ pub fn Iterator(comptime tag_name: []const u8, comptime T: type) type {
             const mutable_self = @constCast(self);
             if (mutable_self.done) return null;
 
-            // Auto-skip: if last element wasn't the one we're iterating, skip to parent close
-            if (mutable_self.last_element) |last| {
-                if (!std.mem.eql(u8, last, item_tag)) {
-                    try mutable_self.skipToParentClose();
-                    mutable_self.last_element = null;
-                }
-            }
-
             // Find next matching element
             while (try mutable_self.parser.next()) |event| {
                 switch (event) {
                     .start_element => |elem| {
-                        mutable_self.last_element = elem.name;
-
                         if (std.mem.eql(u8, elem.name, item_tag)) {
                             // Found matching element - parse it based on whether it has iterators
                             return if (comptime hasIterator(ItemType))
@@ -684,7 +673,6 @@ pub fn MultiIterator(comptime Union: type) type {
         parser: *PullParser,
         parent_tag: []const u8,
         done: bool = false,
-        last_element: ?[]const u8 = null,
 
         // Marker for type detection
         pub const __is_zxml_multi_iterator = true;
@@ -695,28 +683,10 @@ pub fn MultiIterator(comptime Union: type) type {
             const mutable_self = @constCast(self);
             if (mutable_self.done) return null;
 
-            // Auto-skip: if last element doesn't match any union variant, skip to parent close
-            if (mutable_self.last_element) |last| {
-                var matched_variant = false;
-                inline for (@typeInfo(UnionType).@"union".fields) |field| {
-                    const xml_name = comptime getXmlName(UnionType, field.name);
-                    if (std.mem.eql(u8, last, xml_name)) {
-                        matched_variant = true;
-                        break;
-                    }
-                }
-                if (!matched_variant) {
-                    try mutable_self.skipToParentClose();
-                    mutable_self.last_element = null;
-                }
-            }
-
             // Find next matching element
             while (try mutable_self.parser.next()) |event| {
                 switch (event) {
                     .start_element => |elem| {
-                        mutable_self.last_element = elem.name;
-
                         // Try to match against each union variant
                         inline for (@typeInfo(UnionType).@"union".fields) |field| {
                             const xml_name = comptime getXmlName(UnionType, field.name);
